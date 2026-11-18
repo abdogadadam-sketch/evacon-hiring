@@ -2999,11 +2999,22 @@
     function handleDynamicImageSelect(event, fieldId) {
       const file = event.target.files && event.target.files[0];
       if (!file) return;
-      if (!file.type.startsWith('image/')) {
-        showToast('يرجى اختيار ملف صورة صالح.');
+      // Keep original file bytes: no canvas resize, JPEG conversion or recompression.
+      const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+      const maxBytes = 10 * 1024 * 1024;
+      if (!allowedTypes.includes(file.type)) {
+        showToast('اختار صورة JPG أو PNG أو WebP. صور HEIC محتاجة تحويل قبل الرفع.');
+        event.target.value = '';
         return;
       }
-      compressImageToBase64(file, 260, (base64) => {
+      if (file.size > maxBytes) {
+        showToast('الصورة أكبر من 10 ميجابايت. اختار صورة حجمها 10 ميجابايت أو أقل.');
+        event.target.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = function () {
+        const base64 = reader.result;
         uploadedImagesMap[fieldId] = base64;
         document.getElementById(`imgPreview_${fieldId}`).src = base64;
         document.getElementById(`imgPlaceholder_${fieldId}`).classList.add('hidden');
@@ -3011,7 +3022,9 @@
         document.getElementById(`imgPreviewBox_${fieldId}`).classList.add('flex');
         clearDynamicError(fieldId);
         updateProgress();
-      });
+      };
+      reader.onerror = function () { showToast('تعذر قراءة الصورة. حاول مرة أخرى.'); };
+      reader.readAsDataURL(file);
     }
 
     function removeDynamicImage(e, fieldId) {
@@ -3022,31 +3035,6 @@
       document.getElementById(`imgPlaceholder_${fieldId}`).classList.remove('hidden');
       document.getElementById(`imgPreviewBox_${fieldId}`).classList.add('hidden');
       updateProgress();
-    }
-
-    function compressImageToBase64(file, maxDim, callback) {
-      const reader = new FileReader();
-      reader.onload = function (ev) {
-        const img = new Image();
-        img.onload = function () {
-          const canvas = document.createElement('canvas');
-          let w = img.width;
-          let h = img.height;
-          if (w > h && w > maxDim) {
-            h = Math.round((h * maxDim) / w);
-            w = maxDim;
-          } else if (h > maxDim) {
-            w = Math.round((w * maxDim) / h);
-            h = maxDim;
-          }
-          canvas.width = w;
-          canvas.height = h;
-          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-          callback(canvas.toDataURL('image/jpeg', 0.78));
-        };
-        img.src = ev.target.result;
-      };
-      reader.readAsDataURL(file);
     }
 
     function setDynamicError(fieldId, msg) {
